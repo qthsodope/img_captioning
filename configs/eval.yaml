@@ -15,7 +15,7 @@ model:
   vision_dim: 1024
   llm_dim: 2048
   spatial_merge_size: 2
-  checkpoint: checkpoints/epoch5_backup/connector_best_epoch5.pt
+  checkpoint: checkpoints/connector_best_epoch6.pt
   decoder_load_in_4bit: true
   decoder_4bit_compute_dtype: float16
   decoder_4bit_quant_type: nf4
@@ -41,5 +41,5 @@ generation:
   max_prompt_length: 64
 
 outputs:
-  predictions: outputs/predictions/test_predictions_epoch5.json
-  metrics: outputs/metrics/test_metrics_epoch5.json
+  predictions: outputs/predictions/test_predictions_epoch6.json
+  metrics: outputs/metrics/test_metrics_epoch6.json
