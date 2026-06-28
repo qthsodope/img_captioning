@@ -33,3 +33,4 @@ outputs/samples/*.json
 outputs/metrics/*.json
 .codex/
 .agents/
+outputs/
