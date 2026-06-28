@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Sequence
 
 import torch
 from torch import nn
@@ -48,7 +48,7 @@ def decoder_kwargs_from_config(model_cfg: dict[str, Any]) -> dict[str, Any]:
 
 
 class QwenDecoder(nn.Module):
-    """Frozen Qwen3 causal decoder that accepts multimodal input embeddings."""
+    """Qwen causal decoder that accepts multimodal input embeddings."""
 
     def __init__(
         self,
@@ -64,6 +64,10 @@ class QwenDecoder(nn.Module):
     ):
         super().__init__()
         from transformers import AutoModelForCausalLM, AutoTokenizer
+
+        self.model_name = model_name
+        self.load_in_4bit = load_in_4bit
+        self.lora_enabled = False
 
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
         if self.tokenizer.pad_token is None:
@@ -109,6 +113,61 @@ class QwenDecoder(nn.Module):
         for parameter in self.model.parameters():
             parameter.requires_grad = False
         self.model.eval()
+
+    def enable_lora(
+        self,
+        r: int = 8,
+        alpha: int = 16,
+        dropout: float = 0.05,
+        target_modules: Sequence[str] | None = None,
+        gradient_checkpointing: bool = True,
+    ) -> None:
+        """Attach PEFT LoRA adapters to Qwen attention projections."""
+        try:
+            from peft import LoraConfig, TaskType, get_peft_model, prepare_model_for_kbit_training
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise ImportError("peft is required for LoRA training. Install it with `pip install peft`.") from exc
+
+        for parameter in self.model.parameters():
+            parameter.requires_grad = False
+
+        if self.load_in_4bit:
+            try:
+                self.model = prepare_model_for_kbit_training(
+                    self.model,
+                    use_gradient_checkpointing=gradient_checkpointing,
+                )
+            except TypeError:
+                self.model = prepare_model_for_kbit_training(self.model)
+        elif gradient_checkpointing and hasattr(self.model, "gradient_checkpointing_enable"):
+            self.model.gradient_checkpointing_enable()
+
+        modules = list(target_modules or ["q_proj", "k_proj", "v_proj", "o_proj"])
+        config = LoraConfig(
+            r=int(r),
+            lora_alpha=int(alpha),
+            lora_dropout=float(dropout),
+            target_modules=modules,
+            bias="none",
+            task_type=TaskType.CAUSAL_LM,
+        )
+        self.model = get_peft_model(self.model, config)
+        self.model.config.use_cache = False
+        self.lora_enabled = True
+
+    def lora_state_dict(self) -> dict[str, torch.Tensor]:
+        if not self.lora_enabled:
+            return {}
+        from peft import get_peft_model_state_dict
+
+        return get_peft_model_state_dict(self.model)
+
+    def load_lora_state_dict(self, state_dict: dict[str, torch.Tensor]) -> None:
+        if not self.lora_enabled:
+            raise RuntimeError("LoRA must be enabled before loading LoRA weights.")
+        from peft import set_peft_model_state_dict
+
+        set_peft_model_state_dict(self.model, state_dict)
 
     def embed_tokens(self, input_ids: torch.Tensor) -> torch.Tensor:
         embedding = self.model.get_input_embeddings()

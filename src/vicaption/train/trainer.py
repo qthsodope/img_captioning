@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import torch
 from tqdm import tqdm
@@ -18,6 +18,10 @@ def move_batch_to_device(batch: dict[str, Any], device: torch.device) -> dict[st
     return moved
 
 
+def _save_connector_checkpoint(path, model, optimizer, epoch, best_val_loss, config) -> None:
+    save_checkpoint(path, model.connector, optimizer, epoch, best_val_loss, config)
+
+
 class Trainer:
     def __init__(
         self,
@@ -29,6 +33,7 @@ class Trainer:
         device,
         start_epoch: int = 1,
         best_val_loss: float = float("inf"),
+        save_checkpoint_fn: Callable | None = None,
     ):
         self.model = model
         self.train_loader = train_loader
@@ -38,6 +43,7 @@ class Trainer:
         self.device = device
         self.logger = get_logger()
         self.start_epoch = start_epoch
+        self.save_checkpoint_fn = save_checkpoint_fn or _save_connector_checkpoint
 
         train_cfg = config["train"]
         self.grad_accum_steps = int(train_cfg.get("grad_accum_steps", 1))
@@ -47,6 +53,8 @@ class Trainer:
         self.early_stopping_min_delta = float(train_cfg.get("early_stopping_min_delta", 0.0) or 0.0)
         self.save_dir = Path(train_cfg.get("save_dir", "checkpoints"))
         self.save_dir.mkdir(parents=True, exist_ok=True)
+        self.best_checkpoint_name = str(train_cfg.get("best_checkpoint_name", "connector_best.pt"))
+        self.last_checkpoint_name = str(train_cfg.get("last_checkpoint_name", "connector_last.pt"))
         self.use_amp = (
             device.type == "cuda"
             and str(train_cfg.get("mixed_precision", "")).lower() == "fp16"
@@ -59,10 +67,16 @@ class Trainer:
             return torch.cuda.amp.autocast()
         return nullcontext()
 
+    def _decoder_has_trainable_parameters(self) -> bool:
+        return any(parameter.requires_grad for parameter in self.model.decoder.parameters())
+
     def _set_train_mode(self) -> None:
         self.model.connector.train()
         self.model.vision_encoder.eval()
-        self.model.decoder.eval()
+        if self._decoder_has_trainable_parameters():
+            self.model.decoder.train()
+        else:
+            self.model.decoder.eval()
 
     def train_one_epoch(self, epoch: int) -> float:
         if hasattr(self.train_loader.dataset, "set_epoch"):
@@ -85,7 +99,8 @@ class Trainer:
             if should_step:
                 if self.max_grad_norm > 0:
                     self.scaler.unscale_(self.optimizer)
-                    torch.nn.utils.clip_grad_norm_(self.model.connector.parameters(), self.max_grad_norm)
+                    trainable_params = [p for group in self.optimizer.param_groups for p in group["params"]]
+                    torch.nn.utils.clip_grad_norm_(trainable_params, self.max_grad_norm)
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
                 self.optimizer.zero_grad(set_to_none=True)
@@ -149,13 +164,13 @@ class Trainer:
             if improved:
                 self.best_val_loss = criterion
                 epochs_without_improvement = 0
-                best_path = self.save_dir / "connector_best.pt"
-                save_checkpoint(best_path, self.model.connector, self.optimizer, epoch, self.best_val_loss, self.config)
+                best_path = self.save_dir / self.best_checkpoint_name
+                self.save_checkpoint_fn(best_path, self.model, self.optimizer, epoch, self.best_val_loss, self.config)
             else:
                 epochs_without_improvement += 1
 
-            last_path = self.save_dir / "connector_last.pt"
-            save_checkpoint(last_path, self.model.connector, self.optimizer, epoch, self.best_val_loss, self.config)
+            last_path = self.save_dir / self.last_checkpoint_name
+            self.save_checkpoint_fn(last_path, self.model, self.optimizer, epoch, self.best_val_loss, self.config)
 
             if self.early_stopping_patience > 0 and epochs_without_improvement >= self.early_stopping_patience:
                 self.logger.info(

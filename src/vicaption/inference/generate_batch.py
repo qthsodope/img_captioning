@@ -11,7 +11,7 @@ from vicaption.models.captioner import VietnameseCaptioner
 from vicaption.models.connector import QwenStyleConnector
 from vicaption.models.decoder import QwenDecoder, decoder_kwargs_from_config
 from vicaption.models.vision_encoder import SigLIPVisionEncoder
-from vicaption.utils.checkpoint import load_connector_checkpoint
+from vicaption.utils.checkpoint import load_connector_checkpoint, load_lora_connector_checkpoint
 from vicaption.utils.config import load_config
 from vicaption.utils.device import get_device
 
@@ -74,6 +74,19 @@ def generate_batch_predictions(
     return predictions
 
 
+def _enable_lora_from_config(decoder: QwenDecoder, config: dict) -> None:
+    lora_cfg = config.get("lora", {})
+    if not bool(lora_cfg.get("enabled", False)):
+        return
+    decoder.enable_lora(
+        r=int(lora_cfg.get("r", 8)),
+        alpha=int(lora_cfg.get("alpha", 16)),
+        dropout=float(lora_cfg.get("dropout", 0.0)),
+        target_modules=lora_cfg.get("target_modules", ["q_proj", "k_proj", "v_proj", "o_proj"]),
+        gradient_checkpointing=False,
+    )
+
+
 def run_batch_generation(config_path: str) -> list[dict[str, str]]:
     config = load_config(config_path)
     device = get_device(config["project"].get("device", "cuda"))
@@ -91,12 +104,18 @@ def run_batch_generation(config_path: str) -> list[dict[str, str]]:
         torch_dtype=dtype,
         **decoder_kwargs_from_config(model_cfg),
     )
+    _enable_lora_from_config(decoder, config)
+
     connector = QwenStyleConnector(
         vision_dim=int(model_cfg["vision_dim"]),
         llm_dim=int(model_cfg["llm_dim"]),
         spatial_merge_size=int(model_cfg["spatial_merge_size"]),
     )
-    load_connector_checkpoint(model_cfg["checkpoint"], connector, map_location=str(device))
+    if bool(config.get("lora", {}).get("enabled", False)):
+        load_lora_connector_checkpoint(model_cfg["checkpoint"], connector, decoder, map_location="cpu")
+    else:
+        load_connector_checkpoint(model_cfg["checkpoint"], connector, map_location=str(device))
+
     model = VietnameseCaptioner(vision_encoder, connector, decoder)
     _move_module_to_device(model.vision_encoder, device)
     _move_module_to_device(model.connector, device)

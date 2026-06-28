@@ -15,13 +15,24 @@ model:
   vision_dim: 1024
   llm_dim: 2048
   spatial_merge_size: 2
-  checkpoint: checkpoints/connector_best_epoch6.pt
+  checkpoint: checkpoints_lora/lora_connector_best.pt
   decoder_load_in_4bit: true
   decoder_4bit_compute_dtype: float16
   decoder_4bit_quant_type: nf4
   decoder_4bit_use_double_quant: true
   decoder_device_map: auto
   decoder_attn_implementation: sdpa
+
+lora:
+  enabled: true
+  r: 8
+  alpha: 16
+  dropout: 0.0
+  target_modules:
+    - q_proj
+    - k_proj
+    - v_proj
+    - o_proj
 
 prompt:
   text: "Viết một câu chú thích tiếng Việt tự nhiên, chính xác, mô tả nội dung chính trong ảnh. Không lặp lại và không suy đoán."
@@ -41,5 +52,5 @@ generation:
   max_prompt_length: 64
 
 outputs:
-  predictions: outputs/predictions/test_predictions_epoch6.json
-  metrics: outputs/metrics/test_metrics_epoch6.json
+  predictions: outputs/predictions/test_predictions_lora_raw.json
+  metrics: outputs/metrics/test_metrics_lora_raw.json
