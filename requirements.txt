@@ -57,6 +57,7 @@ nvidia-nvshmem-cu13==3.4.5
 nvidia-nvtx==13.0.85
 packaging==26.2
 pandas==3.0.3
+peft==0.18.0
 pillow==12.2.0
 pluggy==1.6.0
 portalocker==3.2.0
@@ -94,4 +95,3 @@ typing_extensions==4.15.0
 urllib3==2.7.0
 xxhash==3.7.1
 yarl==1.24.2
-peft==0.17.1
