@@ -1,0 +1,45 @@
+project:
+  seed: 42
+  device: cuda
+
+data:
+  image_dir: data/raw/images
+  test_json: data/processed/test.json
+  test_refs_json: data/processed/test_refs.json
+
+model:
+  vision_encoder: google/siglip2-large-patch16-256
+  decoder: Qwen/Qwen3-1.7B
+  image_size: 256
+  patch_size: 16
+  vision_dim: 1024
+  llm_dim: 2048
+  spatial_merge_size: 2
+  checkpoint: checkpoints/epoch5_backup/connector_best_epoch5.pt
+  decoder_load_in_4bit: true
+  decoder_4bit_compute_dtype: float16
+  decoder_4bit_quant_type: nf4
+  decoder_4bit_use_double_quant: true
+  decoder_device_map: auto
+  decoder_attn_implementation: sdpa
+
+prompt:
+  text: "Viết một câu chú thích tiếng Việt tự nhiên, chính xác, mô tả nội dung chính trong ảnh. Không lặp lại và không suy đoán."
+
+generation:
+  max_new_tokens: 160
+  num_beams: 3
+  do_sample: false
+  repetition_penalty: 1.0
+  no_repeat_ngram_size: 0
+  early_stopping: false
+  length_penalty: 1.0
+  stop_after_first_sentence: false
+  force_eos_after_sentence: false
+  postprocess: false
+  min_new_tokens_before_stop: 8
+  max_prompt_length: 64
+
+outputs:
+  predictions: outputs/predictions/test_predictions_epoch5.json
+  metrics: outputs/metrics/test_metrics_epoch5.json

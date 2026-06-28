@@ -1,0 +1,96 @@
+project:
+  seed: 42
+  device: cuda
+
+data:
+  raw_json: data/raw/annotations/flickr30k_vi.json
+  image_dir: data/raw/images
+  processed_dir: data/processed
+  stats_dir: data/stats
+  feature_dir: data/processed/vision_features
+  train_ratio: 0.8
+  val_ratio: 0.1
+  test_ratio: 0.1
+
+model:
+  vision_encoder: google/siglip2-large-patch16-256
+  decoder: Qwen/Qwen3-1.7B
+  image_size: 256
+  patch_size: 16
+  vision_dim: 1024
+  llm_dim: 2048
+  spatial_merge_size: 2
+  decoder_load_in_4bit: true
+  decoder_4bit_compute_dtype: float16
+  decoder_4bit_quant_type: nf4
+  decoder_4bit_use_double_quant: true
+  decoder_device_map: auto
+  decoder_attn_implementation: sdpa
+
+prompt:
+  text: "Viết đúng một câu chú thích tiếng Việt tự nhiên, giàu thông tin, mô tả chính xác người, vật, hành động và bối cảnh chính trong ảnh. Không lặp lại, không bịa chi tiết không chắc chắn:"
+  train_texts_by_style:
+    detailed:
+      - "Viết đúng một câu chú thích tiếng Việt tự nhiên, giàu thông tin, mô tả chính xác người, vật, hành động và bối cảnh chính trong ảnh. Không lặp lại, không bịa chi tiết không chắc chắn:"
+      - "Mô tả ảnh bằng một câu tiếng Việt chi tiết vừa đủ, nêu rõ chủ thể, hành động và khung cảnh có thể quan sát được. Không lặp lại và không suy đoán:"
+      - "Tạo một câu chú thích tiếng Việt tự nhiên cho ảnh, ưu tiên chi tiết quan sát được về người, đồ vật, hoạt động và nơi chốn. Không viết nhiều câu:"
+    balanced:
+      - "Viết một câu chú thích tiếng Việt tự nhiên, chính xác, mô tả nội dung chính trong ảnh. Không lặp lại và không suy đoán:"
+      - "Hãy viết một caption tiếng Việt một câu, cụ thể và đúng với những gì nhìn thấy trong ảnh. Không thêm chi tiết không chắc chắn:"
+    concise:
+      - "Viết một câu chú thích tiếng Việt ngắn gọn, đúng nội dung chính trong ảnh. Không lặp lại:"
+      - "Mô tả ảnh bằng một câu tiếng Việt ngắn, chính xác và tự nhiên:"
+
+train:
+  batch_size: 1
+  grad_accum_steps: 8
+  epochs: 10
+  lr: 4.0e-5
+  weight_decay: 0.01
+  max_prompt_length: 64
+  max_caption_length: 80
+  append_eos_to_caption: true
+  normalize_caption_text: true
+  single_sentence_targets: true
+  ensure_terminal_punctuation: true
+  max_grad_norm: 1.0
+  mixed_precision: fp16
+  num_workers: 2
+  save_dir: checkpoints
+  log_every: 20
+  validate_every_epoch: true
+  auto_resume: true
+  resume_from_checkpoint:
+  backup_existing_checkpoints_on_resume: true
+  reset_best_on_resume: true
+  override_optimizer_hparams_on_resume: true
+  use_cached_vision_features: true
+  build_feature_cache: true
+  feature_cache_batch_size: 4
+  one_caption_per_image_per_epoch: true
+  captions_per_image_per_epoch: 3
+  caption_order: length_interleave
+  prompt_selection: length_bucket
+  concise_max_words: 9
+  detailed_min_words: 14
+  val_max_samples: 1000
+  early_stopping_patience: 3
+  early_stopping_min_delta: 0.001
+
+generation:
+  max_new_tokens: 64
+  num_beams: 3
+  do_sample: false
+  repetition_penalty: 1.2
+  no_repeat_ngram_size: 3
+  early_stopping: true
+  length_penalty: 1.0
+  stop_after_first_sentence: true
+  force_eos_after_sentence: true
+  min_new_tokens_before_stop: 8
+  max_prompt_length: 64
+
+outputs:
+  prediction_dir: outputs/predictions
+  sample_dir: outputs/samples
+  metric_dir: outputs/metrics

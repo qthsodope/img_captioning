@@ -1,0 +1,35 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+tmp/
+
+# Dataset - images
+data/raw/images/*
+!data/raw/images/.gitkeep
+
+# Dataset - annotations and processed data
+data/raw/annotations/*
+!data/raw/annotations/.gitkeep
+
+data/processed/*
+!data/processed/.gitkeep
+
+data/stats/*
+!data/stats/.gitkeep
+
+data/test_images/*
+!data/test_images/.gitkeep
+
+checkpoints/
+checkpoints/*.pt
+outputs/predictions/*.json
+outputs/samples/*.json
+outputs/metrics/*.json
+.codex/
+.agents/
